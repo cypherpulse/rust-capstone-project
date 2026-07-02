@@ -70,7 +70,10 @@ fn ensure_wallet(rpc: &Client, wallet_name: &str) -> bitcoincore_rpc::Result<()>
 
 fn wallet_client(wallet_name: &str) -> bitcoincore_rpc::Result<Client> {
     let url = format!("{RPC_URL}/wallet/{wallet_name}");
-    Client::new(&url, Auth::UserPass(RPC_USER.to_owned(), RPC_PASS.to_owned()))
+    Client::new(
+        &url,
+        Auth::UserPass(RPC_USER.to_owned(), RPC_PASS.to_owned()),
+    )
 }
 
 fn write_output(path: &str, values: &[String]) -> std::io::Result<()> {
@@ -88,7 +91,11 @@ fn get_script_address(vout: &serde_json::Value) -> Option<String> {
         .or_else(|| {
             vout["scriptPubKey"]["addresses"]
                 .as_array()
-                .and_then(|addresses| addresses.iter().find_map(|address| address.as_str().map(str::to_owned)))
+                .and_then(|addresses| {
+                    addresses
+                        .iter()
+                        .find_map(|address| address.as_str().map(str::to_owned))
+                })
         })
 }
 
@@ -102,7 +109,7 @@ fn main() -> bitcoincore_rpc::Result<()> {
     println!("Blockchain Info: {:?}", blockchain_info);
 
     // Create/Load the wallets, named 'Miner' and 'Trader'. Have logic to optionally create/load them if they do not exist or not loaded already.
-    
+
     ensure_wallet(&rpc, MINER_WALLET)?;
     ensure_wallet(&rpc, TRADER_WALLET)?;
 
@@ -110,7 +117,8 @@ fn main() -> bitcoincore_rpc::Result<()> {
     let trader_rpc = wallet_client(TRADER_WALLET)?;
 
     // Generate spendable balances in the Miner wallet. How many blocks needs to be mined?
-    let miner_reward_address: String = miner_rpc.call("getnewaddress", &[json!(MINER_REWARD_LABEL)])?;
+    let miner_reward_address: String =
+        miner_rpc.call("getnewaddress", &[json!(MINER_REWARD_LABEL)])?;
     println!("Miner reward address: {miner_reward_address}");
 
     let mut mined_blocks = 0;
@@ -132,7 +140,8 @@ fn main() -> bitcoincore_rpc::Result<()> {
     println!("Miner balance: {}", miner_balance);
 
     // Load Trader wallet and generate a new address
-    let trader_receive_address: String = trader_rpc.call("getnewaddress", &[json!(TRADER_RECEIVE_LABEL)])?;
+    let trader_receive_address: String =
+        trader_rpc.call("getnewaddress", &[json!(TRADER_RECEIVE_LABEL)])?;
 
     // Send 20 BTC from Miner to Trader
     let txid: String = miner_rpc.call(
@@ -147,7 +156,8 @@ fn main() -> bitcoincore_rpc::Result<()> {
     println!("Transaction sent with txid: {txid}");
 
     // Check transaction in mempool
-    let mempool_entry: serde_json::Value = miner_rpc.call("getmempoolentry", &[json!(txid.clone())])?;
+    let mempool_entry: serde_json::Value =
+        miner_rpc.call("getmempoolentry", &[json!(txid.clone())])?;
     println!("Mempool entry: {:?}", mempool_entry);
 
     // Mine 1 block to confirm the transaction
@@ -158,21 +168,28 @@ fn main() -> bitcoincore_rpc::Result<()> {
     println!("Confirmed in block: {}", confirmed_blocks[0]);
 
     // Extract all required transaction details
-    let tx_info: serde_json::Value = miner_rpc.call("gettransaction", &[json!(txid.clone()), json!(null), json!(true)])?;
+    let tx_info: serde_json::Value = miner_rpc.call(
+        "gettransaction",
+        &[json!(txid.clone()), json!(null), json!(true)],
+    )?;
 
     let (miner_input_address, miner_input_amount) = {
-        let vin = tx_info["decoded"]["vin"].as_array().and_then(|vin| vin.first());
+        let vin = tx_info["decoded"]["vin"]
+            .as_array()
+            .and_then(|vin| vin.first());
         if let Some(vin) = vin {
             let input_txid = vin["txid"].as_str().unwrap_or_default().to_string();
             let input_vout = vin["vout"].as_u64().unwrap_or(0) as usize;
-            let prev_tx: serde_json::Value = rpc.call("getrawtransaction", &[json!(input_txid), json!(true)])?;
+            let prev_tx: serde_json::Value =
+                rpc.call("getrawtransaction", &[json!(input_txid), json!(true)])?;
             let prev_vouts = prev_tx["vout"]
                 .as_array()
                 .or_else(|| prev_tx["decoded"]["vout"].as_array());
             let prev_out = prev_vouts
                 .and_then(|vouts| vouts.get(input_vout))
                 .unwrap_or(&serde_json::Value::Null);
-            let miner_input_address = get_script_address(prev_out).unwrap_or_else(|| miner_reward_address.clone());
+            let miner_input_address =
+                get_script_address(prev_out).unwrap_or_else(|| miner_reward_address.clone());
             let miner_input_amount = prev_out["value"].as_f64().unwrap_or(0.0);
             (miner_input_address, miner_input_amount)
         } else {
