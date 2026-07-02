@@ -91,6 +91,7 @@ fn main() -> bitcoincore_rpc::Result<()> {
     println!("Blockchain Info: {:?}", blockchain_info);
 
     // Create/Load the wallets, named 'Miner' and 'Trader'. Have logic to optionally create/load them if they do not exist or not loaded already.
+    
     ensure_wallet(&rpc, MINER_WALLET)?;
     ensure_wallet(&rpc, TRADER_WALLET)?;
 
